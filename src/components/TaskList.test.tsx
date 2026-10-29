@@ -388,4 +388,54 @@ describe('TaskList', () => {
       })
     })
   })
+
+  describe('due dates', () => {
+    const today = { key: '2026-10-28', endOfWeekKey: '2026-11-01' }
+    const dated: Task[] = [
+      { id: 'o', title: 'Late', done: false, dueDate: '2026-10-20' },
+      { id: 't', title: 'Now', done: false, dueDate: '2026-10-28' },
+      { id: 'f', title: 'Later', done: false, dueDate: '2026-11-05' },
+      { id: 'd', title: 'Late but done', done: true, dueDate: '2026-10-20' },
+      { id: 'n', title: 'Someday', done: false },
+    ]
+
+    function renderDated() {
+      render(
+        <TaskList
+          tasks={dated}
+          today={today}
+          emptyMessage={emptyMessage}
+          onToggle={vi.fn()}
+          onDelete={vi.fn()}
+        />,
+      )
+    }
+
+    it('describes each checkbox with its due date, keeping the title as its name', () => {
+      renderDated()
+      expect(
+        screen.getByRole('checkbox', { name: 'Now' }),
+      ).toHaveAccessibleDescription('Due today')
+      expect(
+        screen.getByRole('checkbox', { name: 'Late' }),
+      ).toHaveAccessibleDescription(/^Overdue · /)
+      expect(
+        screen.getByRole('checkbox', { name: 'Later' }),
+      ).toHaveAccessibleDescription(/^Due /)
+    })
+
+    it('does not mark a completed past task as overdue', () => {
+      renderDated()
+      expect(
+        screen.getByRole('checkbox', { name: 'Late but done' }),
+      ).toHaveAccessibleDescription(/^Due /)
+    })
+
+    it('shows no due text and no description for undated tasks', () => {
+      renderDated()
+      const box = screen.getByRole('checkbox', { name: 'Someday' })
+      expect(box).not.toHaveAttribute('aria-describedby')
+      expect(box.closest('li')).not.toHaveTextContent(/Due|Overdue/)
+    })
+  })
 })
