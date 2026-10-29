@@ -2,11 +2,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { DueFilter, Filter, Task } from './types'
 import { FILTERS } from './filters'
 import { DUE_FILTERS, getToday, type Today } from './dueDate'
+import { getTaskSummary } from './summary'
 import AddTaskForm from './components/AddTaskForm'
 import DueFilterBar from './components/DueFilterBar'
 import FilterBar from './components/FilterBar'
 import Header from './components/Header'
 import TaskList from './components/TaskList'
+import TaskSummaryBar from './components/TaskSummaryBar'
 
 // Gap between clearing the live region and setting the new message. Long
 // enough for screen readers to register the empty state, so a repeated
@@ -49,6 +51,9 @@ export default function App() {
     () => tasks.filter((t) => matchesView(t, filter, dueFilter, today)),
     [tasks, filter, dueFilter, today],
   )
+
+  // Counts every task, regardless of the current filters.
+  const summary = useMemo(() => getTaskSummary(tasks), [tasks])
 
   useEffect(() => {
     return () => {
@@ -138,6 +143,7 @@ export default function App() {
         />
         <FilterBar filter={filter} onChange={changeFilter} />
         <DueFilterBar filter={dueFilter} onChange={changeDueFilter} />
+        <TaskSummaryBar summary={summary} />
         <TaskList
           tasks={visibleTasks}
           today={today}

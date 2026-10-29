@@ -622,4 +622,44 @@ describe('App', () => {
       expect(screen.getByText('No tasks due today.')).toBeInTheDocument()
     })
   })
+
+  describe('task summary', () => {
+    function summaryText() {
+      return screen.getByRole('region', { name: 'Task summary' }).textContent
+    }
+
+    it('shows "No tasks yet" before any task is added', () => {
+      render(<App />)
+      expect(summaryText()).toBe('No tasks yet')
+    })
+
+    it('updates when tasks are added, completed, uncompleted and deleted', async () => {
+      const user = userEvent.setup()
+      render(<App />)
+      await addTasks(user, 'Buy milk', 'Walk the dog')
+      expect(summaryText()).toContain('0 of 2 done – 0%')
+
+      await user.click(checkbox('Buy milk'))
+      expect(summaryText()).toContain('1 of 2 done – 50%')
+
+      await user.click(checkbox('Buy milk'))
+      expect(summaryText()).toContain('0 of 2 done – 0%')
+
+      await confirmDelete(user, 'Walk the dog')
+      expect(summaryText()).toContain('0 of 1 done – 0%')
+
+      await confirmDelete(user, 'Buy milk')
+      expect(summaryText()).toBe('No tasks yet')
+    })
+
+    it('counts all tasks, not just those shown by the filter', async () => {
+      const user = userEvent.setup()
+      render(<App />)
+      await addTasks(user, 'Buy milk', 'Walk the dog', 'Read')
+      await user.click(checkbox('Buy milk'))
+      await user.click(filterButton('Done'))
+      expect(visibleTitles()).toEqual(['Buy milk'])
+      expect(summaryText()).toContain('1 of 3 done – 33%')
+    })
+  })
 })
