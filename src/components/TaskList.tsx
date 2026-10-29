@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { Task } from '../types'
+import { describeDueDate, getToday, isOverdue, type Today } from '../dueDate'
 import { focusRing, focusRingDanger, panel } from '../styles'
 import ConfirmDialog from './ConfirmDialog'
 
@@ -9,6 +10,8 @@ type TaskListProps = {
   onToggle: (id: string) => void
   onDelete: (id: string) => void
   onEmptied?: () => void
+  // Used to word due dates ("Due today", "Overdue"). Defaults to the real today.
+  today?: Today
 }
 
 // After a toggle: the toggled task's id and the id of the checkbox to focus if
@@ -39,6 +42,7 @@ export default function TaskList({
   onToggle,
   onDelete,
   onEmptied,
+  today = getToday(),
 }: TaskListProps) {
   const checkboxRefs = useRef(new Map<string, HTMLInputElement>())
   const emptyRef = useRef<HTMLParagraphElement>(null)
@@ -185,6 +189,9 @@ export default function TaskList({
       >
         {tasks.map((task) => {
           const inputId = `task-${task.id}`
+          const dueId = `task-${task.id}-due`
+          const dueText = describeDueDate(task, today)
+          const overdue = isOverdue(task, today)
           return (
             <li key={task.id} className="flex items-center gap-3 px-3 py-3">
               <input
@@ -198,18 +205,33 @@ export default function TaskList({
                 type="checkbox"
                 checked={task.done}
                 onChange={() => handleToggle(task.id)}
+                aria-describedby={dueText ? dueId : undefined}
                 className={`size-6 shrink-0 accent-indigo-600 dark:accent-indigo-400 ${focusRing}`}
               />
-              <label
-                htmlFor={inputId}
-                className={`min-w-0 flex-1 cursor-pointer break-words ${
-                  task.done
-                    ? 'text-slate-500 line-through dark:text-slate-400'
-                    : 'text-slate-900 dark:text-slate-100'
-                }`}
-              >
-                {task.title}
-              </label>
+              <div className="flex min-w-0 flex-1 flex-col">
+                <label
+                  htmlFor={inputId}
+                  className={`cursor-pointer break-words ${
+                    task.done
+                      ? 'text-slate-500 line-through dark:text-slate-400'
+                      : 'text-slate-900 dark:text-slate-100'
+                  }`}
+                >
+                  {task.title}
+                </label>
+                {dueText && (
+                  <span
+                    id={dueId}
+                    className={`text-sm ${
+                      overdue
+                        ? 'font-medium text-red-700 dark:text-red-400'
+                        : 'text-slate-600 dark:text-slate-400'
+                    }`}
+                  >
+                    {dueText}
+                  </span>
+                )}
+              </div>
               <button
                 ref={(el) => {
                   if (el) deleteButtonRefs.current.set(task.id, el)

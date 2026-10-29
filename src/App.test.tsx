@@ -494,4 +494,132 @@ describe('App', () => {
       expect(deleteButton('Walk the dog')).toHaveFocus()
     })
   })
+
+  describe('due-date filter', () => {
+    // Wednesday 28 Oct 2026; this week ends Sunday 1 Nov. Only Date is faked
+    // so user-event's timers and the announce delay still run normally.
+    beforeEach(() => {
+      vi.useFakeTimers({ toFake: ['Date'] })
+      vi.setSystemTime(new Date(2026, 9, 28, 9, 0))
+    })
+
+    afterEach(() => {
+      vi.useRealTimers()
+    })
+
+    function dueButton(
+      name: 'All' | 'Overdue' | 'Due today' | 'Due this week' | 'No due date',
+    ) {
+      return within(
+        screen.getByRole('group', { name: 'Filter by due date' }),
+      ).getByRole('button', { name })
+    }
+
+    async function addDated(user: User, title: string, dueDate?: string) {
+      if (dueDate) {
+        await user.type(screen.getByLabelText('Due date (optional)'), dueDate)
+      }
+      await user.type(screen.getByLabelText('New task'), `${title}{Enter}`)
+    }
+
+    async function addSample(user: User) {
+      await addDated(user, 'Late', '2026-10-20')
+      await addDated(user, 'Now', '2026-10-28')
+      await addDated(user, 'Sunday', '2026-11-01')
+      await addDated(user, 'Next week', '2026-11-03')
+      await addDated(user, 'Someday')
+    }
+
+    it('starts on All and shows every task', async () => {
+      const user = userEvent.setup()
+      render(<App />)
+      await addSample(user)
+      expect(dueButton('All')).toHaveAttribute('aria-pressed', 'true')
+      expect(visibleTitles()).toEqual([
+        'Late',
+        'Now',
+        'Sunday',
+        'Next week',
+        'Someday',
+      ])
+    })
+
+    it.each([
+      ['Overdue', ['Late']],
+      ['Due today', ['Now']],
+      ['Due this week', ['Now', 'Sunday']],
+      ['No due date', ['Someday']],
+    ] as const)('%s shows %j', async (name, expected) => {
+      const user = userEvent.setup()
+      render(<App />)
+      await addSample(user)
+      await user.click(dueButton(name))
+      expect(dueButton(name)).toHaveAttribute('aria-pressed', 'true')
+      expect(visibleTitles()).toEqual(expected)
+    })
+
+    it('combines with the status filter', async () => {
+      const user = userEvent.setup()
+      render(<App />)
+      await addSample(user)
+      await user.click(checkbox('Now'))
+      await user.click(dueButton('Due this week'))
+      await user.click(filterButton('Active'))
+      expect(visibleTitles()).toEqual(['Sunday'])
+      await user.click(filterButton('Done'))
+      expect(visibleTitles()).toEqual(['Now'])
+    })
+
+    it('drops a task from Overdue once it is completed, and announces why', async () => {
+      const user = userEvent.setup()
+      render(<App />)
+      await addSample(user)
+      await user.click(dueButton('Overdue'))
+      await user.click(checkbox('Late'))
+
+      expect(screen.getByText('No overdue tasks.')).toBeInTheDocument()
+      await waitFor(() =>
+        expect(screen.getByRole('status')).toHaveTextContent(
+          'Completed "Late". It\'s no longer shown in Overdue.',
+        ),
+      )
+    })
+
+    it('announces the combined view and count', async () => {
+      const user = userEvent.setup()
+      render(<App />)
+      await addSample(user)
+      await user.click(dueButton('Due this week'))
+      await waitFor(() =>
+        expect(screen.getByRole('status')).toHaveTextContent(
+          'Showing all tasks due this week (2)',
+        ),
+      )
+      await user.click(filterButton('Done'))
+      await waitFor(() =>
+        expect(screen.getByRole('status')).toHaveTextContent(
+          'Showing completed tasks due this week (0)',
+        ),
+      )
+    })
+
+    it('shows an empty message naming both filters', async () => {
+      const user = userEvent.setup()
+      render(<App />)
+      await addSample(user)
+      await user.click(dueButton('Due today'))
+      await user.click(filterButton('Done'))
+      expect(
+        screen.getByText('No completed tasks due today.'),
+      ).toBeInTheDocument()
+    })
+
+    it('uses the due filter empty message when status is All', async () => {
+      const user = userEvent.setup()
+      render(<App />)
+      await addDated(user, 'Someday')
+      await user.click(dueButton('Due today'))
+      expect(screen.getByText('No tasks due today.')).toBeInTheDocument()
+    })
+  })
 })

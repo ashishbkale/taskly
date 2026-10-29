@@ -186,4 +186,42 @@ describe('AddTaskForm', () => {
     inputRef.current?.focus()
     expect(input).toHaveFocus()
   })
+
+  describe('due date', () => {
+    it('labels the optional date field', () => {
+      render(<AddTaskForm onAdd={vi.fn()} />)
+      expect(screen.getByLabelText('Due date (optional)')).toHaveAttribute(
+        'type',
+        'date',
+      )
+    })
+
+    it('passes the chosen date to onAdd and clears both fields', async () => {
+      const { onAdd, user, input, button } = setup()
+      const due = screen.getByLabelText<HTMLInputElement>('Due date (optional)')
+      await user.type(input, 'Pay rent')
+      await user.type(due, '2026-10-30')
+      await user.click(button)
+
+      expect(onAdd).toHaveBeenCalledWith('Pay rent', '2026-10-30')
+      expect(input).toHaveValue('')
+      expect(due.value).toBe('')
+    })
+
+    it('calls onAdd with only the title when no date is set', async () => {
+      const { onAdd, user, input } = setup()
+      await user.type(input, 'Pay rent{Enter}')
+      expect(onAdd.mock.calls).toEqual([['Pay rent']])
+    })
+
+    it('keeps the date when a blank title is rejected', async () => {
+      const { onAdd, user, button } = setup()
+      const due = screen.getByLabelText<HTMLInputElement>('Due date (optional)')
+      await user.type(due, '2026-10-30')
+      await user.click(button)
+
+      expect(onAdd).not.toHaveBeenCalled()
+      expect(due.value).toBe('2026-10-30')
+    })
+  })
 })

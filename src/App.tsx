@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { Filter, Task } from './types'
+import type { DueFilter, Filter, Task } from './types'
 import { FILTERS } from './filters'
+import { DUE_FILTERS, getToday, type Today } from './dueDate'
 import AddTaskForm from './components/AddTaskForm'
+import DueFilterBar from './components/DueFilterBar'
 import FilterBar from './components/FilterBar'
 import Header from './components/Header'
 import TaskList from './components/TaskList'
@@ -11,16 +13,41 @@ import TaskList from './components/TaskList'
 // identical message is announced again.
 const ANNOUNCE_DELAY_MS = 100
 
+function matchesView(task: Task, filter: Filter, dueFilter: DueFilter, today: Today) {
+  return FILTERS[filter].matches(task) && DUE_FILTERS[dueFilter].matches(task, today)
+}
+
+// "active tasks", or "active tasks due today" when a due filter is set.
+function describeView(filter: Filter, dueFilter: DueFilter) {
+  const base = `${FILTERS[filter].spokenName} tasks`
+  return dueFilter === 'all' ? base : `${base} ${DUE_FILTERS[dueFilter].phrase}`
+}
+
+function emptyMessageFor(filter: Filter, dueFilter: DueFilter) {
+  if (dueFilter === 'all') return FILTERS[filter].emptyMessage
+  if (filter === 'all') return DUE_FILTERS[dueFilter].emptyMessage
+  return `No ${describeView(filter, dueFilter)}.`
+}
+
 export default function App() {
   const [tasks, setTasks] = useState<Task[]>([])
   const [filter, setFilter] = useState<Filter>('all')
+  const [dueFilter, setDueFilter] = useState<DueFilter>('all')
   const [announcement, setAnnouncement] = useState('')
   const inputRef = useRef<HTMLInputElement>(null)
   const announceTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
+  // Read on every render; only a change of day yields a new object, so the
+  // memo below isn't invalidated by unrelated renders.
+  const { key: todayKey, endOfWeekKey } = getToday()
+  const today = useMemo<Today>(
+    () => ({ key: todayKey, endOfWeekKey }),
+    [todayKey, endOfWeekKey],
+  )
+
   const visibleTasks = useMemo(
-    () => tasks.filter(FILTERS[filter].matches),
-    [tasks, filter],
+    () => tasks.filter((t) => matchesView(t, filter, dueFilter, today)),
+    [tasks, filter, dueFilter, today],
   )
 
   useEffect(() => {
@@ -45,10 +72,10 @@ export default function App() {
     }, ANNOUNCE_DELAY_MS)
   }
 
-  function addTask(title: string) {
+  function addTask(title: string, dueDate?: string) {
     setTasks((prev) => [
       ...prev,
-      { id: crypto.randomUUID(), title, done: false },
+      { id: crypto.randomUUID(), title, done: false, dueDate },
     ])
     announce(`Added "${title}"`)
   }
@@ -62,19 +89,31 @@ export default function App() {
     const base = task.done
       ? `Marked "${task.title}" as active`
       : `Completed "${task.title}"`
-    // Outside 'all', a toggled task always leaves the current filter.
-    announce(
-      filter === 'all'
-        ? base
-        : `${base}. It's no longer shown in ${FILTERS[filter].label}.`,
-    )
+    // Name the filter that now hides the task, if any.
+    const toggled = { ...task, done: !task.done }
+    const hiddenBy = !FILTERS[filter].matches(toggled)
+      ? FILTERS[filter].label
+      : !DUE_FILTERS[dueFilter].matches(toggled, today)
+        ? DUE_FILTERS[dueFilter].label
+        : null
+    announce(hiddenBy ? `${base}. It's no longer shown in ${hiddenBy}.` : base)
+  }
+
+  function announceView(nextFilter: Filter, nextDue: DueFilter) {
+    const count = tasks.filter((t) =>
+      matchesView(t, nextFilter, nextDue, today),
+    ).length
+    announce(`Showing ${describeView(nextFilter, nextDue)} (${count})`)
   }
 
   function changeFilter(next: Filter) {
     setFilter(next)
-    const { spokenName, matches } = FILTERS[next]
-    const count = tasks.filter(matches).length
-    announce(`Showing ${spokenName} tasks (${count})`)
+    announceView(next, dueFilter)
+  }
+
+  function changeDueFilter(next: DueFilter) {
+    setDueFilter(next)
+    announceView(filter, next)
   }
 
   function deleteTask(id: string) {
@@ -98,9 +137,11 @@ export default function App() {
           onInvalid={announce}
         />
         <FilterBar filter={filter} onChange={changeFilter} />
+        <DueFilterBar filter={dueFilter} onChange={changeDueFilter} />
         <TaskList
           tasks={visibleTasks}
-          emptyMessage={FILTERS[filter].emptyMessage}
+          today={today}
+          emptyMessage={emptyMessageFor(filter, dueFilter)}
           onToggle={toggleTask}
           onDelete={deleteTask}
           onEmptied={focusAddInput}
